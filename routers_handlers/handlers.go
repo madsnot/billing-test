@@ -36,10 +36,10 @@ func TopUpUserBalance(context *gin.Context, dataBase *sql.DB) {
 		return
 	}
 
-	rowsUserBalance := dataBase.QueryRow("select user_balance.balance from user_balance "+
+	rowUserBalance := dataBase.QueryRow("select user_balance.balance from user_balance "+
 		"where user_balance.user_id = $1", transaction.UserID)
 
-	if errRowScan := rowsUserBalance.Scan(&userBalance.Balance); errRowScan != nil {
+	if errRowScan := rowUserBalance.Scan(&userBalance.Balance); errRowScan != nil {
 		_, errInsert := dataBase.Exec("insert into user_balance (user_id, balance) values ($1, $2)",
 			transaction.UserID, transaction.Amount)
 		if errInsert != nil {
@@ -65,7 +65,7 @@ func TopUpUserBalance(context *gin.Context, dataBase *sql.DB) {
 	}
 
 	dataBase.Close()
-	context.JSON(http.StatusOK, "Balance has been replenished")
+	context.JSON(http.StatusOK, "Top up successful")
 }
 
 func GetUserBalance(context *gin.Context, dataBase *sql.DB) {
@@ -73,10 +73,10 @@ func GetUserBalance(context *gin.Context, dataBase *sql.DB) {
 
 	userBalance.UserID, _ = strconv.Atoi(context.Param("userId"))
 
-	rowsUserBalance := dataBase.QueryRow("select user_balance.balance from user_balance "+
+	rowUserBalance := dataBase.QueryRow("select user_balance.balance from user_balance "+
 		"where user_balance.user_id = $1", userBalance.UserID)
 
-	if errRowScan := rowsUserBalance.Scan(&userBalance.Balance); errRowScan != nil {
+	if errRowScan := rowUserBalance.Scan(&userBalance.Balance); errRowScan != nil {
 		context.JSON(http.StatusNotFound, gin.H{"message": "User not found"})
 		return
 	}
@@ -93,10 +93,10 @@ func ReserveAmountForPayment(context *gin.Context, dataBase *sql.DB) {
 		return
 	}
 
-	rowsUserBalance := dataBase.QueryRow("select user_balance.balance from user_balance "+
+	rowUserBalance := dataBase.QueryRow("select user_balance.balance from user_balance "+
 		"where user_balance.user_id = $1", transaction.UserID)
 
-	if errRowScan := rowsUserBalance.Scan(&userBalance.Balance); errRowScan != nil {
+	if errRowScan := rowUserBalance.Scan(&userBalance.Balance); errRowScan != nil {
 		context.JSON(http.StatusNotFound, gin.H{"message": "User not found"})
 		return
 	}
@@ -123,9 +123,76 @@ func ReserveAmountForPayment(context *gin.Context, dataBase *sql.DB) {
 		return
 	}
 	dataBase.Close()
-	context.JSON(http.StatusOK, gin.H{"message": "Payment successful"})
+	context.JSON(http.StatusOK, gin.H{"message": "Reserve successful"})
 }
 
 func ReserveWriteOff(context *gin.Context, dataBase *sql.DB) {
+	var transaction Transaction
+	var userBalance UserBalance
 
+	if errBindJSON := context.BindJSON(&transaction); errBindJSON != nil {
+		log.Fatal("errBindJSON: ", errBindJSON)
+		return
+	}
+
+	rowsTransaction, errGetTransaction := dataBase.Query("select transaction.type, transaction.amount from transaction "+
+		"where transaction.user_id = $1 and transaction.order_id = $2 "+
+		"and transaction.service_id = $3",
+		transaction.UserID, transaction.OrderID, transaction.ServiceID)
+	if errGetTransaction != nil {
+		context.JSON(http.StatusNotFound, gin.H{"message": "Reserve amount transaction not found"})
+		return
+	}
+	defer rowsTransaction.Close()
+
+	for rowsTransaction.Next() {
+		rowsTransaction.Scan(&transaction.Type, &userBalance.ReservedBalance)
+		if transaction.Type == "write-off" {
+			context.JSON(http.StatusBadRequest, gin.H{"message": "Write-off has already done"})
+			rowsTransaction.Close()
+			return
+		}
+	}
+
+	if transaction.Type != "reserve" {
+		context.JSON(http.StatusBadRequest, gin.H{"message": "The order is not found"})
+		return
+	}
+
+	if userBalance.ReservedBalance < transaction.Amount {
+		context.JSON(http.StatusBadRequest, gin.H{"message": "Error the order amount"})
+		return
+	}
+
+	userBalance.ReservedBalance -= transaction.Amount
+	transaction.Type = "write-off"
+	tx, errTx := dataBase.BeginTx(context, nil)
+	if errTx != nil {
+		log.Fatal("errTx: ", errTx)
+		return
+	}
+	defer tx.Rollback()
+
+	_, errWriteOffReserveAmount := tx.ExecContext(context, "update user_balance set reserved_balance = $1 "+
+		"where user_id = $2", userBalance.ReservedBalance, transaction.UserID)
+	if errWriteOffReserveAmount != nil {
+		log.Fatal("errWriteOffReserveAmount: ", errWriteOffReserveAmount)
+		return
+	}
+
+	_, errMakeWriteOffTransaction := tx.ExecContext(context, "insert into transaction (type, user_id, order_id, service_id, amount)"+
+		"values ($1, $2, $3, $4, $5)", transaction.Type, transaction.UserID, transaction.OrderID, transaction.ServiceID,
+		transaction.Amount)
+	if errMakeWriteOffTransaction != nil {
+		log.Fatal("errMakeWriteOffTransaction: ", errMakeWriteOffTransaction)
+		return
+	}
+
+	if errTxCommit := tx.Commit(); errTxCommit != nil {
+		log.Fatal("errTxCommit: ", errTxCommit)
+		return
+	}
+
+	dataBase.Close()
+	context.JSON(http.StatusOK, gin.H{"message": "Write-off successful"})
 }
