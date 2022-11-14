@@ -45,8 +45,10 @@ func main() {
 
 	router.POST("/balance/topUp", ValidOpenDataBase(routers_handlers.TopUpUserBalance))
 	router.GET("/balance/:userId", ValidOpenDataBase(routers_handlers.GetUserBalance))
+	//	router.POST("/balance/report", ValidOpenDataBase(routers_handlers.TopUpUserBalance))
 	router.POST("/payment/reserve", ValidOpenDataBase(routers_handlers.ReserveAmountForPayment))
 	router.POST("/payment", ValidOpenDataBase(routers_handlers.ReserveWriteOff))
+	router.POST("/report", ValidOpenDataBase(routers_handlers.RevenueReport))
 
 	router.Run("localhost:8080")
 }

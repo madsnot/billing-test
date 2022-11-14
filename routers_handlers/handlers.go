@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	_ "github.com/lib/pq"
@@ -25,6 +26,7 @@ type Transaction struct {
 	OrderID   int    `json:"orderId"`
 	ServiceID int    `json:"serviceId"`
 	Amount    int    `json:"amount"`
+	Period    string `json:"period"`
 }
 
 func makeTransaction(context *gin.Context, dataBase *sql.DB, sqlQueryUserBalance string, sqlQueryTransaction string) {
@@ -110,7 +112,7 @@ func ReserveAmountForPayment(context *gin.Context, dataBase *sql.DB) {
 	var userBalance UserBalance
 	var transaction Transaction
 
-	if errBindJSONReserve := context.BindJSON(&transaction); errBindJSONReserve != nil {
+	if errBindJSONReserve := context.BindJSON(&transaction.Period); errBindJSONReserve != nil {
 		log.Print("errBindJSONReserve: ", errBindJSONReserve)
 		context.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"message": "Internal server error"})
 		return
@@ -194,4 +196,46 @@ func ReserveWriteOff(context *gin.Context, dataBase *sql.DB) {
 
 	dataBase.Close()
 	context.JSON(http.StatusOK, gin.H{"message": "Write-off successful"})
+}
+
+func RevenueReport(context *gin.Context, dataBase *sql.DB) {
+	var transaction Transaction
+	type RevenueReport struct {
+		ServiceID int `json:"service_id"`
+		Amount    int `json:"amount"`
+	}
+	var revenueReport []RevenueReport
+
+	if errBindJSONPeriod := context.BindJSON(&transaction); errBindJSONPeriod != nil {
+		log.Print("errBindJSONPeriod: ", errBindJSONPeriod)
+		context.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"message": "Internal server error"})
+		return
+	}
+
+	yearStart, _ := strconv.Atoi(transaction.Period[0:4])
+	monthStart, _ := strconv.Atoi(transaction.Period[5:7])
+	dateStart := time.Date(yearStart, time.Month(monthStart), 1, 0, 0, 0, 0, time.UTC)
+	dateEnd := dateStart.AddDate(0, 1, 0)
+	periodStart := "'" + transaction.Period[0:4] + "-" + transaction.Period[5:7] + "-01" + "'"
+	periodEnd := "'" + dateEnd.String()[0:7] + "-01" + "'"
+
+	rowsRevenueReportPeriod, errGetReport := dataBase.Query("select transaction.service_id, sum(transaction.amount) as amount "+
+		"from transaction where transaction.timestamp < $1 and transaction.timestamp > $2 and "+
+		"transaction.type = 'write-off' group by transaction.service_id", periodEnd, periodStart)
+
+	if errGetReport != nil {
+		log.Print("errGetReport: ", errGetReport)
+		context.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"message": "Internal server error"})
+		return
+	}
+	dataBase.Close()
+	defer rowsRevenueReportPeriod.Close()
+
+	for rowsRevenueReportPeriod.Next() {
+		rowsRevenueReportPeriod.Scan(&transaction.ServiceID, &transaction.Amount)
+		revenueReport = append(revenueReport, RevenueReport{transaction.ServiceID, transaction.Amount})
+	}
+	rowsRevenueReportPeriod.Close()
+
+	context.JSON(http.StatusOK, revenueReport)
 }
