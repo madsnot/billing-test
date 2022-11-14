@@ -5,6 +5,7 @@ import (
 	"example/billing-test/config"
 	"example/billing-test/routers_handlers"
 	"log"
+	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
@@ -24,7 +25,8 @@ func ValidOpenDataBase(function func(*gin.Context, *sql.DB)) gin.HandlerFunc {
 			dataBaseName + " sslmode=" + dataBaseSSLMode
 		dataBase, errOpenDB := sql.Open(dataBaseDriver, connStr)
 		if errOpenDB != nil {
-			log.Fatal("errOpenDB: ", errOpenDB)
+			log.Print("errOpenDB: ", errOpenDB)
+			context.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"message": "Internal server error"})
 			return
 		}
 		defer dataBase.Close()

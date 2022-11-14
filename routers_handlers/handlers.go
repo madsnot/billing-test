@@ -30,25 +30,29 @@ type Transaction struct {
 func makeTransaction(context *gin.Context, dataBase *sql.DB, sqlQueryUserBalance string, sqlQueryTransaction string) {
 	tx, errBeginTx := dataBase.BeginTx(context, nil)
 	if errBeginTx != nil {
-		log.Fatal("errTx: ", errBeginTx)
+		log.Print("errTx: ", errBeginTx)
+		context.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"message": "Internal server error"})
 		return
 	}
 	defer tx.Rollback()
 
 	_, errUpdateUserBalance := tx.ExecContext(context, sqlQueryUserBalance)
 	if errUpdateUserBalance != nil {
-		log.Fatal("errUpdateUserBalance: ", errUpdateUserBalance)
+		log.Print("errUpdateUserBalance: ", errUpdateUserBalance)
+		context.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"message": "Internal server error"})
 		return
 	}
 
 	_, errInsertTransaction := tx.ExecContext(context, sqlQueryTransaction)
 	if errInsertTransaction != nil {
-		log.Fatal("errInsertTransaction: ", errInsertTransaction)
+		log.Print("errInsertTransaction: ", errInsertTransaction)
+		context.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"message": "Internal server error"})
 		return
 	}
 
 	if errTxCommit := tx.Commit(); errTxCommit != nil {
-		log.Fatal("errTxCommit: ", errTxCommit)
+		log.Print("errTxCommit: ", errTxCommit)
+		context.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"message": "Internal server error"})
 		return
 	}
 }
@@ -58,8 +62,9 @@ func TopUpUserBalance(context *gin.Context, dataBase *sql.DB) {
 	var transaction Transaction
 	userBalance.Balance = 0
 
-	if errBindJSON := context.BindJSON(&transaction); errBindJSON != nil {
-		log.Fatal("errBindJSON: ", errBindJSON)
+	if errBindJSONTopUp := context.BindJSON(&transaction); errBindJSONTopUp != nil {
+		log.Print("errBindJSONTopUp: ", errBindJSONTopUp)
+		context.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"message": "Internal server error"})
 		return
 	}
 
@@ -105,8 +110,9 @@ func ReserveAmountForPayment(context *gin.Context, dataBase *sql.DB) {
 	var userBalance UserBalance
 	var transaction Transaction
 
-	if errBindJSON := context.BindJSON(&transaction); errBindJSON != nil {
-		log.Fatal("errBindJSON: ", errBindJSON)
+	if errBindJSONReserve := context.BindJSON(&transaction); errBindJSONReserve != nil {
+		log.Print("errBindJSONReserve: ", errBindJSONReserve)
+		context.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"message": "Internal server error"})
 		return
 	}
 
@@ -141,8 +147,9 @@ func ReserveWriteOff(context *gin.Context, dataBase *sql.DB) {
 	var transaction Transaction
 	var userBalance UserBalance
 
-	if errBindJSON := context.BindJSON(&transaction); errBindJSON != nil {
-		log.Fatal("errBindJSON: ", errBindJSON)
+	if errBindJSONWriteOff := context.BindJSON(&transaction); errBindJSONWriteOff != nil {
+		log.Print("errBindJSONWriteOff: ", errBindJSONWriteOff)
+		context.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"message": "Internal server error"})
 		return
 	}
 
@@ -151,7 +158,7 @@ func ReserveWriteOff(context *gin.Context, dataBase *sql.DB) {
 		"and transaction.service_id = $3",
 		transaction.UserID, transaction.OrderID, transaction.ServiceID)
 	if errGetTransaction != nil {
-		context.JSON(http.StatusNotFound, gin.H{"message": "Reserve amount transaction not found"})
+		context.JSON(http.StatusNotFound, gin.H{"message": "Reserve transaction not found"})
 		return
 	}
 	defer rowsTransaction.Close()
