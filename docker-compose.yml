@@ -1,0 +1,23 @@
+version: "3.9"
+
+services:
+  app: 
+    build: ./
+    ports:
+      - "8080:8080"
+    env_file:
+      - ./.env
+    depends_on:
+      - postgres
+  postgres:
+    image: postgres
+    environment:
+      POSTGRES_DB: "billing_test"
+      POSTGRES_USER: "postgres"
+      POSTGRES_PASSWORD: "postgres"
+      PGDATA: "/var/lib/postgresql/data/pgdata"
+    volumes:
+      - ./billing-test.sql:/docker-entrypoint-initdb.d/billing-test.sql
+      - /var/lib/postgresql/data
+    ports: 
+      - "5432:5432"

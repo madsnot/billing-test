@@ -82,7 +82,7 @@ func TopUpUserBalance(context *gin.Context, dataBase *sql.DB) {
 	}
 
 	transaction.Type = "top_up"
-	sqlQueryTransaction := fmt.Sprintf("insert into transaction (type, user_id, amount) "+
+	sqlQueryTransaction := fmt.Sprintf("insert into transactions (type, user_id, amount) "+
 		"values ('%s', %d, %d)", transaction.Type, transaction.UserID, transaction.Amount)
 
 	makeTransaction(context, dataBase, sqlQueryUserBalance, sqlQueryTransaction)
@@ -112,7 +112,7 @@ func ReserveAmountForPayment(context *gin.Context, dataBase *sql.DB) {
 	var userBalance UserBalance
 	var transaction Transaction
 
-	if errBindJSONReserve := context.BindJSON(&transaction.Period); errBindJSONReserve != nil {
+	if errBindJSONReserve := context.BindJSON(&transaction); errBindJSONReserve != nil {
 		log.Print("errBindJSONReserve: ", errBindJSONReserve)
 		context.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"message": "Internal server error"})
 		return
@@ -135,7 +135,7 @@ func ReserveAmountForPayment(context *gin.Context, dataBase *sql.DB) {
 
 	sqlQueryUserBalance := fmt.Sprintf("update user_balance set balance = %d, reserved_balance = %d where user_id = %d",
 		userBalance.Balance, transaction.Amount, transaction.UserID)
-	sqlQueryTransaction := fmt.Sprintf("insert into transaction (type, user_id, order_id, service_id, amount)"+
+	sqlQueryTransaction := fmt.Sprintf("insert into transactions (type, user_id, order_id, service_id, amount)"+
 		"values ('%s', %d, %d, %d, %d)", transaction.Type, transaction.UserID, transaction.OrderID, transaction.ServiceID,
 		transaction.Amount)
 
@@ -155,9 +155,9 @@ func ReserveWriteOff(context *gin.Context, dataBase *sql.DB) {
 		return
 	}
 
-	rowsTransaction, errGetTransaction := dataBase.Query("select transaction.type, transaction.amount from transaction "+
-		"where transaction.user_id = $1 and transaction.order_id = $2 "+
-		"and transaction.service_id = $3",
+	rowsTransaction, errGetTransaction := dataBase.Query("select transactions.type, transactions.amount from transactions "+
+		"where transactions.user_id = $1 and transactions.order_id = $2 "+
+		"and transactions.service_id = $3",
 		transaction.UserID, transaction.OrderID, transaction.ServiceID)
 	if errGetTransaction != nil {
 		context.JSON(http.StatusNotFound, gin.H{"message": "Reserve transaction not found"})
@@ -188,7 +188,7 @@ func ReserveWriteOff(context *gin.Context, dataBase *sql.DB) {
 	transaction.Type = "write-off"
 	sqlQueryUserBalance := fmt.Sprintf("update user_balance set reserved_balance = %d "+
 		"where user_id = %d", userBalance.ReservedBalance, transaction.UserID)
-	sqlQueryTransaction := fmt.Sprintf("insert into transaction (type, user_id, order_id, service_id, amount)"+
+	sqlQueryTransaction := fmt.Sprintf("insert into transactions (type, user_id, order_id, service_id, amount)"+
 		"values ('%s', %d, %d, %d, %d)", transaction.Type, transaction.UserID, transaction.OrderID, transaction.ServiceID,
 		transaction.Amount)
 
@@ -219,9 +219,9 @@ func RevenueReport(context *gin.Context, dataBase *sql.DB) {
 	periodStart := "'" + transaction.Period[0:4] + "-" + transaction.Period[5:7] + "-01" + "'"
 	periodEnd := "'" + dateEnd.String()[0:7] + "-01" + "'"
 
-	rowsRevenueReportPeriod, errGetReport := dataBase.Query("select transaction.service_id, sum(transaction.amount) as amount "+
-		"from transaction where transaction.timestamp < $1 and transaction.timestamp > $2 and "+
-		"transaction.type = 'write-off' group by transaction.service_id", periodEnd, periodStart)
+	rowsRevenueReportPeriod, errGetReport := dataBase.Query("select transactions.service_id, sum(transactions.amount) as amount "+
+		"from transactions where transactions.timestamp < $1 and transactions.timestamp > $2 and "+
+		"transactions.type = 'write-off' group by transactions.service_id", periodEnd, periodStart)
 
 	if errGetReport != nil {
 		log.Print("errGetReport: ", errGetReport)
