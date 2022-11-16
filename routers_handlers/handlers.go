@@ -88,7 +88,7 @@ func TopUpUserBalance(context *gin.Context, dataBase *sql.DB) {
 	makeTransaction(context, dataBase, sqlQueryUserBalance, sqlQueryTransaction)
 
 	dataBase.Close()
-	context.JSON(http.StatusOK, "Top up successful")
+	context.JSON(http.StatusOK, gin.H{"message": "Top up successful"})
 }
 
 func GetUserBalance(context *gin.Context, dataBase *sql.DB) {
@@ -160,7 +160,8 @@ func ReserveWriteOff(context *gin.Context, dataBase *sql.DB) {
 		"and transactions.service_id = $3",
 		transaction.UserID, transaction.OrderID, transaction.ServiceID)
 	if errGetTransaction != nil {
-		context.JSON(http.StatusNotFound, gin.H{"message": "Reserve transaction not found"})
+		log.Print("errGetTransaction: ", errGetTransaction)
+		context.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"message": "Internal server error"})
 		return
 	}
 	defer rowsTransaction.Close()
@@ -175,7 +176,7 @@ func ReserveWriteOff(context *gin.Context, dataBase *sql.DB) {
 	}
 
 	if transaction.Type != "reserve" {
-		context.JSON(http.StatusBadRequest, gin.H{"message": "The order is not found"})
+		context.JSON(http.StatusBadRequest, gin.H{"message": "Reserve transaction not found"})
 		return
 	}
 
